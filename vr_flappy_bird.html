@@ -179,6 +179,135 @@ let flapStrength = 0.15;
 let pipes = [];
 let score = 0;
 let gameOver = false;
+let started = false; // ⚡ zwaartekracht start pas bij eerste klik
+
+// FLAP (click / screen / trigger)
+window.addEventListener("click", () => {
+  if (gameOver) return restart();
+
+  // eerste klik start het spel
+  if (!started) {
+    started = true;
+  }
+
+  velocity = flapStrength;
+});
+
+// SPAWN PIPES
+function spawnPipe() {
+  let gapY = Math.random() * 2 + 3; // hogere startpositie
+  let gapSize = 1.5;
+
+  let scene = document.querySelector("a-scene");
+  let pipeGroup = document.createElement("a-entity");
+
+  let topPipe = document.createElement("a-box");
+  topPipe.setAttribute("color", "green");
+  topPipe.setAttribute("width", "1");
+  topPipe.setAttribute("depth", "1");
+  topPipe.setAttribute("height", "3");
+  topPipe.setAttribute("position", `0 ${gapY + gapSize} -30`);
+
+  let bottomPipe = document.createElement("a-box");
+  bottomPipe.setAttribute("color", "green");
+  bottomPipe.setAttribute("width", "1");
+  bottomPipe.setAttribute("depth", "1");
+  bottomPipe.setAttribute("height", "3");
+  bottomPipe.setAttribute("position", `0 ${gapY - gapSize - 3} -30`);
+
+  pipeGroup.appendChild(topPipe);
+  pipeGroup.appendChild(bottomPipe);
+  scene.appendChild(pipeGroup);
+
+  pipes.push({entity: pipeGroup, passed: false});
+}
+
+// Spawn elke 2 seconden
+setInterval(() => {
+  if (!gameOver && started) spawnPipe(); // start pipes pas als spel begonnen is
+}, 2000);
+
+// GAME LOOP
+function tick() {
+  if (gameOver) return;
+
+  // zwaartekracht alleen toepassen als spel gestart is
+  if (started) {
+    velocity += gravity;
+  }
+
+  let pos = player.object3D.position;
+  pos.y += velocity;
+
+  // Ground collision
+  if (pos.y < 0.5) endGame();
+
+  // Pipes beweging en collision
+  pipes.forEach((pipeObj, index) => {
+    if (!started) return; // geen beweging voor eerste klik
+
+    let speed = 0.1;
+    pipeObj.entity.object3D.position.z += speed;
+
+    let pipeZ = pipeObj.entity.object3D.position.z;
+
+    // Score verhogen als pipe voorbij speler
+    if (!pipeObj.passed && pipeZ > player.object3D.position.z) {
+      score++;
+      scoreText.setAttribute("value", "Score: " + score);
+      pipeObj.passed = true;
+    }
+
+    // Collision check
+    let py = pos.y;
+    let topPipe = pipeObj.entity.children[0].object3D;
+    let bottomPipe = pipeObj.entity.children[1].object3D;
+
+    if (Math.abs(pipeZ) < 1) {
+      if (py > topPipe.position.y - 1.5 || py < bottomPipe.position.y + 1.5) {
+        endGame();
+      }
+    }
+
+    // Verwijder pipe als die te dichtbij is
+    if (pipeZ > 5) {
+      pipeObj.entity.parentNode.removeChild(pipeObj.entity);
+      pipes.splice(index, 1);
+    }
+  });
+
+  requestAnimationFrame(tick);
+}
+
+tick();
+
+function endGame() {
+  gameOver = true;
+  gameOverText.setAttribute("value", "GAME OVER\nClick to restart");
+}
+
+function restart() {
+  location.reload();
+}
+</script>
+
+</body>
+</html>          width="4"></a-text>
+
+</a-scene>
+
+<script>
+let player = document.querySelector("#player");
+let scoreText = document.querySelector("#scoreText");
+let gameOverText = document.querySelector("#gameOverText");
+
+let velocity = 0;
+let gravity = -0.01;
+let flapStrength = 0.15;
+
+let pipes = [];
+let score = 0;
+let gameOver = false;
 
 // FLAP (click / screen / trigger)
 window.addEventListener("click", () => {
