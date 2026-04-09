@@ -2,22 +2,29 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>VR Room-Scale Movement</title>
+  <title>VR Room-Scale Platform met Colliders</title>
   <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
 </head>
 <body>
-<a-scene vr-mode-ui="enabled: true" xrweb>
+<a-scene vr-mode-ui="enabled: true" xrweb physics="debug: false">
 
   <!-- Sky -->
   <a-sky color="#87CEEB"></a-sky>
 
-  <!-- Platform / Ground -->
+  <!-- Platform -->
   <a-plane rotation="-90 0 0" width="20" height="20" color="#7CFC00"></a-plane>
 
-  <!-- Obstakel ter referentie -->
+  <!-- Obstakels ter referentie -->
   <a-box position="0 0.5 -5" depth="1" height="1" width="3" color="red"></a-box>
+  <a-box position="3 0.5 -2" depth="1" height="1" width="2" color="blue"></a-box>
 
-  <!-- Player / Camera Rig voor echte beweging -->
+  <!-- Onzichtbare muren / boundaries -->
+  <a-box position="0 1 -10" depth="0.5" height="2" width="20" color="#FFF" visible="false"></a-box>
+  <a-box position="0 1 10" depth="0.5" height="2" width="20" color="#FFF" visible="false"></a-box>
+  <a-box position="-10 1 0" depth="20" height="2" width="0.5" color="#FFF" visible="false"></a-box>
+  <a-box position="10 1 0" depth="20" height="2" width="0.5" color="#FFF" visible="false"></a-box>
+
+  <!-- Player / Camera Rig -->
   <a-entity id="playerRig" position="0 0 0">
     <a-camera wasd-controls-enabled="false"></a-camera>
   </a-entity>
