@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>VR Flappy Bird</title>
+  <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
+</head>
+
+<body>
+<a-scene vr-mode-ui="enabled: true">
+
+  <a-sky color="#87CEEB"></a-sky>
+  <a-plane rotation="-90 0 0" width="100" height="100" color="#7CFC00"></a-plane>
+
+  <a-entity id="player" position="0 1.6 0">
+    <a-camera></a-camera>
+  </a-entity>
+
+  <a-text id="scoreText" value="Score: 0" position="0 2 -2" align="center" color="#000" width="4"></a-text>
+  <a-text id="gameOverText" value="" position="0 1.5 -2" align="center" color="red" width="4"></a-text>
+
+</a-scene>
+
+<script>
+let player = document.querySelector("#player");
+let scoreText = document.querySelector("#scoreText");
+let gameOverText = document.querySelector("#gameOverText");
+
+let velocity = 0;
+let gravity = -0.005;
+let flapStrength = 0.09;
+
+let pipes = [];
+let score = 0;
+let gameOver = false;
+
+window.addEventListener("click", () => {
+  if (gameOver) return restart();
+  velocity = flapStrength;
+});
+
+function spawnPipe() {
+  let gapY = Math.random() * 2 + 1;
+  let gapSize = 1.5;
+
+  let scene = document.querySelector("a-scene");
+
+  let topPipe = document.createElement("a-box");
+  topPipe.setAttribute("color", "green");
+  topPipe.setAttribute("width", "1");
+  topPipe.setAttribute("depth", "1");
+  topPipe.setAttribute("height", "5");
+  topPipe.setAttribute("position", `0 ${gapY + gapSize} -20`);
+
+  let bottomPipe = document.createElement("a-box");
+  bottomPipe.setAttribute("color", "green");
+  bottomPipe.setAttribute("width", "1");
+  bottomPipe.setAttribute("depth", "1");
+  bottomPipe.setAttribute("height", "5");
+  bottomPipe.setAttribute("position", `0 ${gapY - gapSize - 5} -20`);
+
+  scene.appendChild(topPipe);
+  scene.appendChild(bottomPipe);
+
+  pipes.push({top: topPipe, bottom: bottomPipe, passed: false});
+}
+
+setInterval(() => {
+  if (!gameOver) spawnPipe();
+}, 2000);
+
+function tick() {
+  if (gameOver) return;
+
+  velocity += gravity;
+
+  let pos = player.object3D.position;
+  pos.y += velocity;
+
+  if (pos.y < 1) endGame();
+
+  pipes.forEach(pipe => {
+    let speed = 0.05;
+
+    pipe.top.object3D.position.z += speed;
+    pipe.bottom.object3D.position.z += speed;
+
+    let pipeZ = pipe.top.object3D.position.z;
+
+    if (!pipe.passed && pipeZ > 0) {
+      score++;
+      scoreText.setAttribute("value", "Score: " + score);
+      pipe.passed = true;
+    }
+
+    let py = pos.y;
+
+    if (Math.abs(pipeZ) < 0.5) {
+      if (py > pipe.top.object3D.position.y - 2 ||
+          py < pipe.bottom.object3D.position.y + 2) {
+        endGame();
+      }
+    }
+  });
+
+  requestAnimationFrame(tick);
+}
+
+tick();
+
+function endGame() {
+  gameOver = true;
+  gameOverText.setAttribute("value", "GAME OVER\nClick to restart");
+}
+
+function restart() {
+  location.reload();
+}
+</script>
+
+</body>
+</html>
