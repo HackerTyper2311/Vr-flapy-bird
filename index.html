@@ -2,33 +2,53 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>VR Room-Scale 1:1 Movement</title>
+  <title>VR Real Obstacles</title>
   <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
 </head>
 <body>
 <a-scene vr-mode-ui="enabled: true" xrweb>
 
-  <!-- Sky -->
   <a-sky color="#87CEEB"></a-sky>
 
-  <!-- Platform / Ground -->
+  <!-- Platform -->
   <a-plane rotation="-90 0 0" width="20" height="20" color="#7CFC00"></a-plane>
 
-  <!-- Obstakels ter referentie -->
-  <a-box position="0 0.5 -5" depth="1" height="1" width="3" color="red"></a-box>
-  <a-box position="3 0.5 -2" depth="1" height="1" width="2" color="blue"></a-box>
-
-  <!-- Invisible walls / boundaries -->
-  <a-box position="0 1 -10" depth="0.5" height="2" width="20" color="#FFF" visible="false"></a-box>
-  <a-box position="0 1 10" depth="0.5" height="2" width="20" color="#FFF" visible="false"></a-box>
-  <a-box position="-10 1 0" depth="20" height="2" width="0.5" color="#FFF" visible="false"></a-box>
-  <a-box position="10 1 0" depth="20" height="2" width="0.5" color="#FFF" visible="false"></a-box>
-
-  <!-- Player / Camera Rig -->
+  <!-- Camera Rig -->
   <a-entity id="playerRig" position="0 0 0">
-    <a-camera wasd-controls-enabled="false"></a-camera>
+    <a-camera id="playerCam" wasd-controls-enabled="false"></a-camera>
   </a-entity>
 
+  <!-- Boundary visualization (bij Meta Quest) -->
+  <a-entity id="boundaries" position="0 0 0"></a-entity>
+
 </a-scene>
+
+<script>
+const sceneEl = document.querySelector('a-scene');
+const boundariesEl = document.querySelector('#boundaries');
+
+sceneEl.addEventListener('enter-vr', async () => {
+  const session = sceneEl.renderer.xr.getSession();
+  if (!session) return;
+
+  // WebXR reference space
+  const refSpace = await session.requestReferenceSpace('bounded-floor');
+
+  if (refSpace.boundsGeometry) {
+    // Teken de echte boundary als lijnen
+    const geometry = new THREE.BufferGeometry();
+    const vertices = [];
+    refSpace.boundsGeometry.forEach(point => {
+      vertices.push(point.x, 0, point.z);
+    });
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+
+    const material = new THREE.LineBasicMaterial({color: 0xff0000});
+    const line = new THREE.LineLoop(geometry, material);
+    boundariesEl.setObject3D('mesh', line);
+  }
+});
+</script>
+
 </body>
 </html>
