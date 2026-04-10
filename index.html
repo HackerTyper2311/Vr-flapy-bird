@@ -1,40 +1,505 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>WebXR Room-Scale VR Template</title>
-
-  <!-- A-Frame latest stable -->
+  <title>WebXR Movement Detection VR</title>
   <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
-
   <style>
-    /* Minimal 2D overlay for non-VR debug/config panel */
-    #debug-panel {
-      position: fixed;
-      top: 12px; left: 12px;
-      background: rgba(10,10,20,0.88);
-      color: #7efff5;
-      font-family: 'Courier New', monospace;
-      font-size: 12px;
-      padding: 14px 18px;
-      border-radius: 8px;
-      border: 1px solid rgba(126,255,245,0.25);
-      z-index: 9999;
-      max-width: 320px;
-      pointer-events: none;
-      line-height: 1.7;
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{background:#000;overflow:hidden;font-family:'Courier New',monospace}
+
+    /* \u2500\u2500 2D Dashboard (non-VR view) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */
+    #dashboard{
+      position:fixed;top:0;left:0;width:100%;height:100%;
+      display:flex;flex-direction:column;
+      pointer-events:none;z-index:100;
     }
-    #debug-panel h2 {
-      margin: 0 0 8px;
-      font-size: 13px;
-      color: #fff;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
+
+    /* Top status bar */
+    #status-bar{
+      display:flex;gap:12px;padding:14px 18px;
+      background:linear-gradient(to bottom,rgba(0,0,0,0.9),transparent);
+      pointer-events:auto;
     }
-    .dim { color: rgba(126,255,245,0.5); }
-    #enter-vr-btn {
-      position: fixed;
+    .stat-chip{
+      display:flex;align-items:center;gap:8px;
+      background:rgba(10,12,30,0.85);
+      border:1px solid rgba(255,255,255,0.1);
+      border-radius:20px;padding:6px 14px;
+      font-size:11px;color:#aaa;
+      transition:border-color .3s,color .3s;
+    }
+    .stat-chip.active{border-color:rgba(0,255,180,0.6);color:#00ffb4}
+    .stat-chip.warn  {border-color:rgba(255,180,0,0.6);color:#ffb400}
+    .stat-chip.danger{border-color:rgba(255,60,60,0.6);color:#ff3c3c}
+    .stat-dot{
+      width:7px;height:7px;border-radius:50%;background:currentColor;
+      animation:pulse 1.4s ease-in-out infinite;
+    }
+    @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.4;transform:scale(0.7)}}
+
+    /* Movement state badge */
+    #state-badge{
+      position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+      text-align:center;pointer-events:none;
+      transition:opacity .4s;
+    }
+    #state-icon{font-size:72px;line-height:1;filter:drop-shadow(0 0 20px currentColor)}
+    #state-name{
+      font-size:13px;letter-spacing:.3em;text-transform:uppercase;
+      color:#fff;opacity:.7;margin-top:6px;
+    }
+    #state-speed{font-size:22px;color:#00ffb4;font-weight:700;margin-top:4px}
+
+    /* Steps counter */
+    #steps-display{
+      position:fixed;bottom:80px;right:20px;text-align:right;
+    }
+    #steps-num{font-size:48px;font-weight:900;color:#fff;line-height:1}
+    #steps-label{font-size:10px;letter-spacing:.2em;color:#666;text-transform:uppercase}
+
+    /* Camera feed (hidden, used for motion detection) */
+    #cam-feed{
+      position:fixed;bottom:20px;right:20px;
+      width:120px;height:90px;border-radius:8px;
+      border:1px solid rgba(255,255,255,0.1);
+      overflow:hidden;opacity:.6;
+      pointer-events:auto;
+    }
+    #cam-video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
+    #cam-motion-bar{
+      position:absolute;bottom:0;left:0;height:3px;
+      background:#00ffb4;width:0%;transition:width .1s;
+    }
+    #cam-label{
+      position:absolute;top:4px;left:6px;font-size:9px;
+      color:rgba(255,255,255,0.5);letter-spacing:.1em;text-transform:uppercase;
+    }
+
+    /* VR enter button */
+    #vr-btn{
+      position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
+      background:transparent;border:1px solid rgba(0,255,180,0.5);
+      color:#00ffb4;font-family:'Courier New',monospace;
+      font-size:12px;letter-spacing:.2em;text-transform:uppercase;
+      padding:10px 28px;border-radius:40px;cursor:pointer;
+      pointer-events:auto;
+      transition:background .2s,box-shadow .2s;
+    }
+    #vr-btn:hover{
+      background:rgba(0,255,180,0.1);
+      box-shadow:0 0 30px rgba(0,255,180,0.3);
+    }
+
+    /* Permission prompt */
+    #perm-overlay{
+      position:fixed;inset:0;background:rgba(0,0,10,0.95);
+      display:flex;flex-direction:column;align-items:center;justify-content:center;
+      gap:16px;z-index:200;
+    }
+    #perm-overlay h1{color:#fff;font-size:18px;letter-spacing:.1em}
+    #perm-overlay p{color:#666;font-size:12px;text-align:center;max-width:300px;line-height:1.7}
+    .perm-btn{
+      background:rgba(0,255,180,0.15);border:1px solid rgba(0,255,180,0.4);
+      color:#00ffb4;font-family:'Courier New',monospace;font-size:12px;
+      letter-spacing:.15em;padding:10px 24px;border-radius:30px;cursor:pointer;
+    }
+  </style>
+</head>
+<body>
+
+<!-- Permission overlay (shown on first load) -->
+<div id="perm-overlay">
+  <h1>\u2b21 MOVEMENT DETECTION VR</h1>
+  <p>This experience uses your <strong style="color:#fff">GPS</strong>, <strong style="color:#fff">accelerometer</strong>, and <strong style="color:#fff">camera</strong> to detect walking and running in real-time and reflect it inside VR.</p>
+  <button class="perm-btn" onclick="requestPermissions()">GRANT ACCESS &amp; START</button>
+</div>
+
+<!-- 2D Dashboard -->
+<div id="dashboard">
+  <div id="status-bar">
+    <div class="stat-chip" id="chip-gps">
+      <div class="stat-dot"></div>GPS
+    </div>
+    <div class="stat-chip" id="chip-accel">
+      <div class="stat-dot"></div>ACCEL
+    </div>
+    <div class="stat-chip" id="chip-cam">
+      <div class="stat-dot"></div>CAM
+    </div>
+    <div class="stat-chip" id="chip-xr">
+      <div class="stat-dot"></div>XR
+    </div>
+  </div>
+
+  <div id="state-badge">
+    <div id="state-icon">\ud83e\uddcd</div>
+    <div id="state-name">IDLE</div>
+    <div id="state-speed">0.0 km/h</div>
+  </div>
+
+  <div id="steps-display">
+    <div id="steps-num">0</div>
+    <div id="steps-label">steps</div>
+  </div>
+</div>
+
+<!-- Camera feed (for optical motion detection) -->
+<div id="cam-feed">
+  <video id="cam-video" autoplay muted playsinline></video>
+  <canvas id="cam-canvas" style="display:none" width="80" height="60"></canvas>
+  <div id="cam-motion-bar"></div>
+  <div id="cam-label">CAM MOTION</div>
+</div>
+
+<button id="vr-btn" onclick="document.querySelector('a-scene').enterVR()">\u25b6 ENTER VR</button>
+
+
+<!-- \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+     A-FRAME SCENE
+\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 -->
+<a-scene
+  id="main-scene"
+  webxr="requiredFeatures: local-floor; optionalFeatures: bounded-floor, hand-tracking"
+  renderer="antialias:true;colorManagement:true"
+  background="color:#020208"
+  vr-mode-ui="enabled:false"
+>
+
+  <!-- ASSETS -->
+  <a-assets>
+    <canvas id="floor-canvas" width="512" height="512"></canvas>
+    <img id="floor-tex" src="">
+  </a-assets>
+
+  <!-- \u2500\u2500 CAMERA RIG \u2500\u2500
+       WebXR drives this 1:1 with headset position.
+       The movement-detection component translates GPS/accel
+       data into a forward push on this rig when in flat mode.
+  \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 -->
+  <a-entity id="camera-rig" position="0 0 0" movement-driver>
+    <a-camera
+      id="player-cam"
+      look-controls="enabled:false"
+      wasd-controls="enabled:false"
+      user-height="0"
+      near="0.05" far="200"
+    >
+      <!-- VR HUD \u2014 attached to camera, always visible in headset -->
+      <a-entity id="vr-hud" position="0 0 -1.4" visible="false">
+
+        <!-- State panel background -->
+        <a-rounded
+          width="0.55" height="0.22" radius="0.03"
+          color="#050510" opacity="0.85"
+          position="0 0.05 0"
+        ></a-rounded>
+
+        <!-- Movement state text (e.g. WALKING) -->
+        <a-text
+          id="hud-state"
+          value="IDLE"
+          align="center"
+          color="#00ffb4"
+          width="1.1"
+          position="0 0.1 0.001"
+          font="https://cdn.aframe.io/fonts/Exo2Bold.fnt"
+        ></a-text>
+
+        <!-- Speed readout -->
+        <a-text
+          id="hud-speed"
+          value="0.0 km/h"
+          align="center"
+          color="#ffffff"
+          width="0.65"
+          position="0 0.03 0.001"
+        ></a-text>
+
+        <!-- Steps readout -->
+        <a-text
+          id="hud-steps"
+          value="0 steps"
+          align="center"
+          color="#888"
+          width="0.55"
+          position="0 -0.04 0.001"
+        ></a-text>
+
+        <!-- Sensor source indicators -->
+        <a-text
+          id="hud-sensors"
+          value="GPS \u25cf ACCEL \u25cf CAM"
+          align="center"
+          color="#334"
+          width="0.5"
+          position="0 -0.09 0.001"
+        ></a-text>
+
+      </a-entity>
+
+      <!-- Crosshair -->
+      <a-cursor color="#00ffb4" opacity="0.4"
+                raycaster="objects:.interactive" fuse="false">
+      </a-cursor>
+    </a-camera>
+  </a-entity>
+
+
+  <!-- \u2500\u2500 ENVIRONMENT \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 -->
+  <a-sky color="#020208"></a-sky>
+  <a-entity id="stars-container"></a-entity>
+
+  <!-- Floor -->
+  <a-plane
+    id="floor-plane"
+    rotation="-90 0 0"
+    width="40" height="40"
+    material="src:#floor-tex;repeat:20 20;transparent:true;opacity:0.9"
+  ></a-plane>
+
+  <!-- Ambient glow under player -->
+  <a-circle
+    id="player-glow"
+    radius="0.35"
+    rotation="-90 0 0"
+    position="0 0.005 0"
+    material="color:#00ffb4;transparent:true;opacity:0.12;shader:flat"
+    glow-follow
+  ></a-circle>
+
+  <!-- \u2500\u2500 FOOTSTEP RIPPLES (spawned by JS) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 -->
+  <a-entity id="ripple-pool"></a-entity>
+
+  <!-- \u2500\u2500 MOVEMENT TRAIL \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 -->
+  <a-entity id="trail-container"></a-entity>
+
+  <!-- \u2500\u2500 BOUNDARY WALLS \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 -->
+  <a-entity id="boundary-container"></a-entity>
+
+  <!-- \u2500\u2500 OBSTACLES \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 -->
+  <a-entity id="obstacle-container"></a-entity>
+
+  <!-- Lighting -->
+  <a-light type="ambient"     color="#0a0a20" intensity="2.0"></a-light>
+  <a-light type="directional" color="#00ffb4" intensity="0.4"
+           position="2 6 -2"></a-light>
+  <a-light type="point" id="move-light"
+           color="#00ffb4" intensity="0" distance="3"
+           position="0 0.5 0"></a-light>
+
+</a-scene>
+
+
+<script>
+'use strict';
+/* \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+   CONFIGURATION
+\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 */
+const CONFIG = {
+  room: { w: 4, d: 4, h: 2.4 },
+
+  // Speed thresholds (m/s) for state classification
+  speed: { walkMin: 0.4, runMin: 2.2 },
+
+  // Accelerometer step detection \u2014 peak threshold for magnitude
+  accel: { stepThreshold: 1.8, stepCooldownMs: 300 },
+
+  // Camera optical flow: pixel diff threshold (0-255)
+  camera: { motionThreshold: 18, sampleRate: 8 },   // check every N frames
+
+  // How much the rig shifts per step (flat/desktop mode only, not XR)
+  stepMove: 0.5,
+};
+
+/* \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+   GLOBAL STATE
+\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 */
+const STATE = {
+  mode: 'idle',       // 'idle' | 'walking' | 'running'
+  speedKmh: 0,
+  steps: 0,
+  gpsActive: false,
+  accelActive: false,
+  camActive: false,
+
+  // GPS
+  lastGpsPos: null,
+  lastGpsTime: 0,
+  gpsSpeed: 0,         // m/s
+
+  // Accelerometer
+  lastStepTime: 0,
+  accelMag: 0,
+  stepCadence: 0,      // steps/min
+  stepTimes: [],       // rolling buffer for cadence calc
+
+  // Camera optical flow
+  prevFrame: null,
+  camMotion: 0,        // 0..1
+
+  // For non-XR preview movement
+  previewHeading: 0,
+};
+
+/* \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+   PERMISSIONS + SENSOR INIT
+\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 */
+async function requestPermissions() {
+  document.getElementById('perm-overlay').style.display = 'none';
+
+  await startGPS();
+  await startAccelerometer();
+  await startCamera();
+  startMovementEngine();
+}
+
+/* \u2500\u2500 GPS \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */
+function startGPS() {
+  return new Promise(resolve => {
+    if (!navigator.geolocation) { resolve(); return; }
+
+    navigator.geolocation.watchPosition(onGpsUpdate, onGpsError, {
+      enableHighAccuracy: true,
+      maximumAge: 500,
+      timeout: 8000,
+    });
+    resolve();
+  });
+}
+
+function onGpsUpdate(pos) {
+  setChipActive('chip-gps', true);
+  STATE.gpsActive = true;
+
+  const now = Date.now();
+  const { latitude: lat, longitude: lng, speed } = pos.coords;
+
+  // Use native speed if available (most mobile browsers provide it)
+  if (speed !== null && speed >= 0) {
+    STATE.gpsSpeed = speed;
+  } else if (STATE.lastGpsPos) {
+    // Fallback: calculate from position delta
+    const dist = haversineMeters(STATE.lastGpsPos.lat, STATE.lastGpsPos.lng, lat, lng);
+    const dt   = (now - STATE.lastGpsTime) / 1000;
+    STATE.gpsSpeed = dt > 0 ? dist / dt : 0;
+  }
+
+  STATE.lastGpsPos  = { lat, lng };
+  STATE.lastGpsTime = now;
+}
+
+function onGpsError(e) {
+  console.warn('GPS error:', e.message);
+  setChipActive('chip-gps', false, 'warn');
+}
+
+/* \u2500\u2500 ACCELEROMETER \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */
+async function startAccelerometer() {
+  /*
+    iOS 13+ requires DeviceMotionEvent.requestPermission()
+    Android grants automatically on HTTPS.
+  */
+  if (typeof DeviceMotionEvent !== 'undefined' &&
+      typeof DeviceMotionEvent.requestPermission === 'function') {
+    try {
+      const res = await DeviceMotionEvent.requestPermission();
+      if (res !== 'granted') return;
+    } catch(e) { return; }
+  }
+
+  window.addEventListener('devicemotion', onDeviceMotion);
+  setChipActive('chip-accel', true);
+  STATE.accelActive = true;
+}
+
+function onDeviceMotion(e) {
+  const a = e.accelerationIncludingGravity;
+  if (!a) return;
+
+  // Magnitude of the acceleration vector
+  const mag = Math.sqrt(a.x*a.x + a.y*a.y + a.z*a.z);
+  STATE.accelMag = mag;
+
+  const now = Date.now();
+
+  /*
+    Step detection via peak detection:
+    When magnitude exceeds threshold and enough time
+    has passed since the last step, count a step.
+  */
+  if (mag > CONFIG.accel.stepThreshold &&
+      (now - STATE.lastStepTime) > CONFIG.accel.stepCooldownMs) {
+    STATE.steps++;
+    STATE.lastStepTime = now;
+
+    // Cadence: keep last 6 step timestamps
+    STATE.stepTimes.push(now);
+    if (STATE.stepTimes.length > 6) STATE.stepTimes.shift();
+    if (STATE.stepTimes.length >= 2) {
+      const span = (STATE.stepTimes.at(-1) - STATE.stepTimes[0]) / 1000;
+      STATE.stepCadence = (STATE.stepTimes.length - 1) / span * 60;
+    }
+
+    onStepDetected();
+  }
+}
+
+/* \u2500\u2500 CAMERA OPTICAL FLOW \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */
+async function startCamera() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment', width: 160, height: 120 },
+      audio: false,
+    });
+    const video  = document.getElementById('cam-video');
+    video.srcObject = stream;
+    setChipActive('chip-cam', true);
+    STATE.camActive = true;
+
+    let frameCount = 0;
+    const canvas = document.getElementById('cam-canvas');
+    const ctx    = canvas.getContext('2d', { willReadFrequently: true });
+
+    function analyseFrame() {
+      frameCount++;
+      if (frameCount % CONFIG.camera.sampleRate === 0) {
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+
+        if (STATE.prevFrame) {
+          let diff = 0;
+          // Sample every 4th pixel for performance
+          for (let i = 0; i < data.length; i += 16) {
+            diff += Math.abs(data[i]   - STATE.prevFrame[i])
+                  + Math.abs(data[i+1] - STATE.prevFrame[i+1])
+                  + Math.abs(data[i+2] - STATE.prevFrame[i+2]);
+          }
+          const avgDiff = diff / (data.length / 16);
+          STATE.camMotion = Math.min(avgDiff / 80, 1); // normalise 0..1
+          document.getElementById('cam-motion-bar').style.width =
+            (STATE.camMotion * 100) + '%';
+        }
+        STATE.prevFrame = new Uint8ClampedArray(data);
+      }
+      requestAnimationFrame(analyseFrame);
+    }
+    video.onloadedmetadata = () => analyseFrame();
+  } catch(e) {
+    console.warn('Camera not available:', e.message);
+    setChipActive('chip-cam', false, 'warn');
+  }
+}
+
+
+/* \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+   MOVEMENT ENGINE
+   Fuses GPS speed + accelerometer cadence + camera motion
+   into a single movement state every 500ms.
+\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 */
+function startMovementEngine() {
+  setIn      position: fixed;
       bottom: 24px; left: 50%;
       transform: translateX(-50%);
       background: #7efff5;
